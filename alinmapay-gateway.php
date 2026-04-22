@@ -545,6 +545,7 @@ echo '
 
       return $decryptedData;
   }   
+<<<<<<< HEAD
     function check_alinmapay_payment_response(){
   //echo"hii";die;
     global $woocommerce;
@@ -637,10 +638,161 @@ echo '
 
         if ($result == 'FAILURE') {
 
+=======
+    function check_alinmapay_payment_response() {
+    global $woocommerce;
+     // ✅ Run ONLY for your callback URL
+    if (!isset($_GET['wc-api']) || $_GET['wc-api'] !== 'WC_AlinmaPay_payment') {
+        return;
+    }
+
+    $jsonData = file_get_contents("php://input");
+     if (empty($jsonData)) {
+            error_log("Empty request received");
+            return;
+        }
+
+   //  error_log("Raw Input: " . $jsonData);
+
+    $data = null;
+
+// ==============================
+// ✅ STEP 1: Try JSON (Direct / Wrapped)
+// ==============================
+ 
+$parsedJson = json_decode($jsonData, true);
+
+
+
+    // 🔹 CASE 1: Wrapped JSON (site)
+    if (isset($parsedJson['site'])) {
+        error_log(" WRAPPED JSON detected");
+
+        $siteData = json_decode($parsedJson['site'], true);
+
+        if (json_last_error() === JSON_ERROR_NONE) {
+            $data = $siteData;
+        } else {
+            error_log("❌ Invalid site JSON");
+            return;
+        }
+    }
+  else {
+       error_log(" ENCRYPTED FLOW detected");
+        // ENCRYPTED RESPONSE SCENARIO - Your existing code
+        parse_str($jsonData, $parsedData);
+       
+        unset($parsedData['termId']);
+        
+        if(!isset($parsedData['data'])) {
+            // Not a valid payment response
+            return;
+        }
+        
+        $dataValue = $parsedData['data'];
+
+        // Decode the extracted data
+        if (is_array($dataValue)) {
+            $decodedData = urldecode(reset($dataValue));
+        } else {
+            $decodedData = urldecode($dataValue);
+        }
+        $decodedData = str_replace(' ', '+', $decodedData);
+        $encryptedResponse = $decodedData;
+          
+        $merKey = $this->merchant_key;
+
+        try {
+            $decryptedData = $this->decryptData($encryptedResponse, $merKey);
+            error_log('Decrypted Response: ' . $decryptedData);
+        } catch (Exception $e) {
+            error_log("Decryption Error: " . $e->getMessage());
+            return;
+        }
+             
+        $data = json_decode($decryptedData, true);
+    }
+    
+    // --- REST OF YOUR EXISTING CODE (UNCHANGED) ---
+    // Access the "transactionId" field
+    if(!isset($data['transactionId']) || !isset($data['orderDetails']['orderId'])) {
+        error_log('Missing required fields in payment response');
+        return;
+    }
+         
+    $transactionId = $data['transactionId'];
+    $respamount = $data['amountDetails']['amount'];
+    $orderid = $data['orderDetails']['orderId'];
+    $responsehash = isset($data['signature']) ? $data['signature'] : '';
+    $responsecode = $data['responseCode'];
+    $result = $data['result'];
+    $respcurrency = isset($data['currency']) ? $data['currency'] : '';
+    
+    // Use the received POST data as needed
+        
+    if($transactionId !== NULL) {
+        $order = new WC_Order($orderid);
+        $orderStatus = $order->get_status();
+        $transauthorised = false;
+        $merchant_key = $this->merchant_key;
+     
+        if($orderStatus == 'pending') {
+            if($result == "SUCCESS") {       
+                $order = new WC_Order($orderid);        
+                $transauthorised = true;
+                $this->msg['message'] = "Thank you for shopping with us. Your account has been charged and your transaction is successful. We will be shipping your order to you soon.";
+                $this->msg['class'] = 'woocommerce';
+                $this->msg['type'] = "info";
+                
+                // Add transaction ID to order note
+                $order->add_order_note('Payment successful via AlinmaPay. Transaction ID: ' . $transactionId);
+                
+                $order->payment_complete();
+                $woocommerce->cart->empty_cart();
+                $order->update_status('completed');
+                $order->add_order_note('Payment Gateway has processed the payment. Ref Number: '.$orderid);
+               
+                $order_received_url = $order->get_checkout_order_received_url();
+                wp_redirect($order_received_url);
+                exit;  
+            } else {
+                if ($result == 'FAILURE') {
+                  $message = "Thank you for shopping with us. However, the transaction has been Failed.";
+                    $order->update_status('failed');
+                    $order->add_order_note('Transaction failed. Response Code: ' . $responsecode);
+                    $order->add_order_note($message);
+
+                    $order = wc_get_order($orderid);
+                    
+                    $unique_key = 'alinmapay_error_' . md5($orderid . time());
+                    set_transient($unique_key, 'Thank you for shopping with us. However, the transaction has been Failed.', 60);
+
+                    wp_redirect(add_query_arg('alinmapay_msg_key', $unique_key, wc_get_checkout_url()));
+                    exit;
+                }
+            }
+        } else {
+            $message = "Thank you for shopping with us. However, the transaction has been Failed.";
+            
+            $order->update_status('failed');
+            $order->add_order_note('Transaction failed.');
+            $order->add_order_note($message);
+
+            $unique_key = 'alinmapay_error_' . md5($orderid . time());
+            set_transient($unique_key, 'Thank you for shopping with us. However, the transaction has been Failed.', 60);
+
+            wp_redirect(add_query_arg('alinmapay_msg_key', $unique_key, wc_get_checkout_url()));
+            exit;
+        }
+
+        $message = "Thank you for shopping with us. However, the transaction has been Failed.";
+        
+>>>>>>> 47551c1 (updated)
         $order->update_status('failed');
         $order->add_order_note('Transaction failed.');
         $order->add_order_note($message);
 
+<<<<<<< HEAD
         $order = wc_get_order($orderid);
         
 
@@ -700,6 +852,15 @@ echo '
   }
 
     }
+=======
+        $unique_key = 'alinmapay_error_' . md5($orderid . time());
+        set_transient($unique_key, 'Thank you for shopping with us. However, the transaction has been Failed.', 60);
+
+        wp_redirect(add_query_arg('alinmapay_msg_key', $unique_key, wc_get_checkout_url()));
+        exit;
+    }
+}
+>>>>>>> 47551c1 (updated)
     function getOS() { 
   global $user_agent;
   $user_agent = $_SERVER['HTTP_USER_AGENT'];
@@ -926,6 +1087,7 @@ echo '
       $userAgent = $_SERVER['HTTP_USER_AGENT']; 
 
       $deviceType = $this-> getDeviceType($userAgent);
+<<<<<<< HEAD
       if ($deviceType === 'iPad') {
         $version = preg_replace("/(.+)(iPhone|iPad|iPod)(.+)OS[\s|\_](\d+)\_?(\d+)?[\_]?(\d+)?.+/i", "$4.$5", $str);
 
@@ -993,6 +1155,60 @@ echo '
              "channelId"     => $channelID 
         ];
   }*/
+=======
+
+$deviceModel = '';
+$deviceOSVersion = '';
+$devicePlatform = '';
+
+// ================= iPad =================
+if ($deviceType === 'iPad') {
+
+    preg_match('/OS (\d+_\d+(_\d+)?)/', $userAgent, $matches);
+    $deviceOSVersion = isset($matches[1]) ? str_replace('_', '.', $matches[1]) : '';
+    $deviceModel = "iPad";
+
+// ================= iPhone =================
+} elseif ($deviceType === 'iPhone') {
+
+    preg_match('/OS (\d+_\d+(_\d+)?)/', $userAgent, $matches);
+    $deviceOSVersion = isset($matches[1]) ? str_replace('_', '.', $matches[1]) : '';
+    $deviceModel = "iPhone";
+
+// ================= Android =================
+} elseif ($deviceType === 'Mobile') {
+
+    preg_match('/Android\s([0-9\.]+)/', $userAgent, $matches);
+    $deviceOSVersion = $matches[1] ?? '';
+    $deviceModel = "Android Device";
+
+// ================= Mac =================
+} elseif ($deviceType === 'Mac') {
+
+    preg_match('/Mac OS X (\d+[_\.]\d+([_\.]\d+)?)/', $userAgent, $matches);
+    $deviceOSVersion = isset($matches[1]) ? str_replace('_', '.', $matches[1]) : '';
+    $deviceModel = "Mac";
+
+// ================= Desktop =================
+} else {
+
+    $deviceType = 'Desktop';
+
+    preg_match('/Windows NT ([0-9\.]+)/', $userAgent, $matches);
+    $deviceOSVersion = $matches[1] ?? '';
+    $deviceModel = "Windows PC";
+}
+
+// ================= Browser =================
+if (strpos($userAgent, 'Chrome') !== false) {
+    $devicePlatform = 'Chrome';
+} elseif (strpos($userAgent, 'Safari') !== false) {
+    $devicePlatform = 'Safari';
+} elseif (strpos($userAgent, 'Firefox') !== false) {
+    $devicePlatform = 'Firefox';
+}
+ 
+>>>>>>> 47551c1 (updated)
 
       $fields = array(
       'terminalId' => $terminalId,
